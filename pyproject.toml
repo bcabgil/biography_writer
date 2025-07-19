@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "bwriter"
+version = "0.0.0"
+description = "Here we write a biography of a person using LangChain and PyTorch."
+license = "MIT"
+authors = ["bcabgil"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "3.11.9"
+torch = { version = "2.4.1", source = "pytorch-cuda" }
+torchaudio = { version = "2.4.1", source = "pytorch-cuda" }
+transformers = "4.44.2"
+langchain = "0.3.3"
+langchain-core = "0.3.10"
+langchain-community = "0.3.2"
+langchain-chroma = "0.1.4"
+langchain-openai = "^0.2.2"
+
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "6.29.5"
+jupyter = "1.1.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu124"
+priority = "supplemental"
+
+
