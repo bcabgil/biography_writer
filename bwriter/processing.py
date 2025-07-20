@@ -1,4 +1,4 @@
-"""Class for processing the transcribed texts."""
+"""Classes for processing the transcribed texts."""
 
 import json
 import os
@@ -29,12 +29,9 @@ class Processor:
     def __init__(self, llm_name: str = "gpt-4o-mini"):
         """Initialize the processor with a given LLM name."""
         os.environ["OPENAI_API_KEY"] = read_file(
-            os.getenv("OPENAI_API_KEY_PATH", default="openai_key.txt"), clean=False
+            os.getenv("OPENAI_API_KEY_PATH", default=r"C:\Users\bcabg\Documents\Projects\Biograf\whiteb_editions\openai_key.txt"), clean=False
         )
         self.llm = ChatOpenAI(model=llm_name)
-        self.prompts = json.load(open("bwriter/prompts/processor_prompts.json", "r"))[
-            "processor_prompts"
-        ]
 
     def get_recap(self, inputs: Union[Dict, List]):
         """Get a summary of the text using the LLM."""
@@ -96,52 +93,6 @@ class Processor:
         )
         document_splits = text_splitter.split_documents(file_library)
         return document_splits
-
-    def correction_chain(self) -> RunnableSequence:
-        """Correct a text transcript.
-
-        Returns:
-            RunnableSequence: A chain that takes a text and corrects it.
-        """
-        prompt = PromptTemplate.from_template(self.prompts["correction"])
-        # Create a chain that takes a text and returns the corrected text
-        literary_chain = prompt | self.llm | StrOutputParser()
-
-        return literary_chain
-
-    def get_text_corrections(self, document_splits: List[Document]) -> Dict:
-        """Correct each document split.
-
-        Args:
-            document_splits (List[Document]): List of document splits to be corrected.
-        """
-        correction_chain = self.correction_chain()
-
-        splits_corretgits = []
-        prev_source = ""
-        # Counter to keep track of the number of splits for each source
-        counter = 0
-        logger.info("Correcting text using correction chain")
-        for ds in tqdm(document_splits, total=len(document_splits)):
-            source = ds.metadata["source"]
-            # If the source is different from the previous one, reset the counter
-            # Otherwise, increment the counter
-            if source != prev_source:
-                prev_source = source
-                counter = 0
-            else:
-                counter += 1
-
-            text = ds.page_content
-            splits_corretgits.append(
-                {
-                    "source": source,
-                    "counter": counter,
-                    "text": correction_chain.invoke({"text": text}),
-                }
-            )
-
-        return splits_corretgits
 
     @staticmethod
     def save_text(
@@ -310,38 +261,73 @@ class Processor:
 
         return clusters
 
-    def llm_merge_texts(self, text_to_merge: List[str]) -> str:
-        """Merge a list of texts using the LLM.
+
+class Corrector(Processor):
+    """Correct texts with a selected OpenAI llm."""
+    def __init__(self, llm_name: str = "gpt-4o-mini"):
+        super().__init__(llm_name)
+        self.prompts = json.load(open("bwriter/prompts/processor_prompts.json", "r"))[
+            "processor_prompts"
+        ]["correction"]
+
+    def correction_chain(self) -> RunnableSequence:
+        """Correct a text transcript.
+
+        Returns:
+            RunnableSequence: A chain that takes a text and corrects it.
+        """
+        prompt = PromptTemplate.from_template(self.prompts)
+        # Create a chain that takes a text and returns the corrected text
+        literary_chain = prompt | self.llm | StrOutputParser()
+
+        return literary_chain
+
+    def get_text_corrections(self, document_splits: List[Document]) -> Dict:
+        """Correct each document split.
 
         Args:
-            text_to_merge (List[str]): List of texts to merge.
+            document_splits (List[Document]): List of document splits to be corrected.
         """
-        prompt_merge = PromptTemplate.from_template(self.prompts["merge"])
-        merge_chain = prompt_merge | self.llm | StrOutputParser()
+        correction_chain = self.correction_chain()
 
-        return merge_chain.invoke({"text": "/n/n".join(text_to_merge)})
+        splits_corretgits = []
+        prev_source = ""
+        # Counter to keep track of the number of splits for each source
+        counter = 0
+        logger.info("Correcting text using correction chain")
+        for ds in tqdm(document_splits, total=len(document_splits)):
+            source = ds.metadata["source"]
+            # If the source is different from the previous one, reset the counter
+            # Otherwise, increment the counter
+            if source != prev_source:
+                prev_source = source
+                counter = 0
+            else:
+                counter += 1
 
-    def merge_texts(self, texts: List[str], clusters: List[str]) -> Dict[str, str]:
-        """Merge a list of texts according to the clusters they belong to."""
-        # Create a dataframe of texts and clusters
-        df = pd.DataFrame({"text": texts, "cluster": clusters})
-        unique_clusters = df["cluster"].unique()
+            text = ds.page_content
+            splits_corretgits.append(
+                {
+                    "source": source,
+                    "counter": counter,
+                    "text": correction_chain.invoke({"text": text}),
+                }
+            )
 
-        text_per_cluster = {}
-        # Merge the texts in each cluster
-        logger.info("Merging texts in each cluster.")
-        for cluster in tqdm(unique_clusters, total=len(unique_clusters)):
-            # Get the texts in the cluster
-            texts_to_merge = df[df["cluster"] == cluster]["text"].tolist()
-            # Merge the texts in the cluster
-            merged_cluster = self.llm_merge_texts(texts_to_merge)
-            text_per_cluster[cluster] = merged_cluster
+        return splits_corretgits
 
-        return text_per_cluster
+
+class Sorter(Processor):
+    """Sorts texts with a selected OpenAI llm."""
+    def __init__(self, llm_name: str = "gpt-4o-mini"):
+        super().__init__(llm_name)
+        self.prompts = json.load(open("bwriter/prompts/processor_prompts.json", "r"))[
+            "processor_prompts"
+        ]["order"]
 
     def llm_order_chain(self, text_to_order: List[str]) -> str:
         """Create chain to order the texts"""
-        prompt_merge = PromptTemplate.from_template(self.prompts["order"])
+        prompt_merge = PromptTemplate.from_template(self.prompts)
         order_chain = prompt_merge | self.llm | StrOutputParser()
 
         return order_chain.invoke({"text": text_to_order})
@@ -372,3 +358,41 @@ class Processor:
             )
 
         return ordered_text
+
+
+class Merger(Processor):
+    """Merges texts with a selected OpenAI llm."""
+    def __init__(self, llm_name: str = "gpt-4o-mini"):
+        super().__init__(llm_name)
+        self.prompts = json.load(open("bwriter/prompts/processor_prompts.json", "r"))[
+            "processor_prompts"
+        ]["merge"]
+    
+    def llm_merge_texts(self, text_to_merge: List[str]) -> str:
+        """Merge a list of texts using the LLM.
+
+        Args:
+            text_to_merge (List[str]): List of texts to merge.
+        """
+        prompt_merge = PromptTemplate.from_template(self.prompts)
+        merge_chain = prompt_merge | self.llm | StrOutputParser()
+
+        return merge_chain.invoke({"text": "/n/n".join(text_to_merge)})
+
+    def merge_texts(self, texts: List[str], clusters: List[str]) -> Dict[str, str]:
+        """Merge a list of texts according to the clusters they belong to."""
+        # Create a dataframe of texts and clusters
+        df = pd.DataFrame({"text": texts, "cluster": clusters})
+        unique_clusters = df["cluster"].unique()
+
+        text_per_cluster = {}
+        # Merge the texts in each cluster
+        logger.info("Merging texts in each cluster.")
+        for cluster in tqdm(unique_clusters, total=len(unique_clusters)):
+            # Get the texts in the cluster
+            texts_to_merge = df[df["cluster"] == cluster]["text"].tolist()
+            # Merge the texts in the cluster
+            merged_cluster = self.llm_merge_texts(texts_to_merge)
+            text_per_cluster[cluster] = merged_cluster
+
+        return text_per_cluster
