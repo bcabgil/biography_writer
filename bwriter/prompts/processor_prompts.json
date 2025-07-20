@@ -1,0 +1,8 @@
+{
+    "processor_prompts": {
+        "recap": "Donat un text amb un extracte de les teves vivéncies, fes una llista on resumeixis en una frase que englobi el conjunt de vivències sobre el mateix tema. Retorna una llista sense encapçalament ni comentaris finals. Resumeix cada vivència en una línea. \n Text de vivències: {text}",
+        "correction": "Donat un fragment de text de les teves memóries, corretgeix-lo.\n Per fer-ho segueix les següents instruccions:\n- Mantenir el mateix llenguatge i coloquialismes característics del català de LLeida.\n- Reescriu el text mantenint la veu i el to de l'escrit\n- No et deixis informació, basat només en el que està escrit i en el context següent.\nText: {text}\nRetrorna només el text, sense cap comentari addicional.",
+        "merge": "Donats uns trossos de text de les teves vivències, combina'ls per a que continguin la informació de forma unificada.\n Has de:\n 1. Mantenir el mateix llenguatge i coloquialismes característics del català de LLeida.\n 2. Mantenir la veu i el to dels textos originals.\n 3. Basa't només en el que està escrit.\n 4. No repetir informació.\n\n Textos: {text} \n Retorna només el text unitari sense cap comentari addicional.",
+        "order": "Donats uns paragrafs numerats sobre les teves vivençes, ordena'ls per a que estiguin ordenats cronològicament i tinguin continuitat argumental. \n Retorna únicament la seqüència de paràgrafs ordenada en una llista. Exemple: [1, 3, 2, 4, 5]\n Textos: {text}"
+    }
+}
