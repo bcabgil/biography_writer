@@ -16,6 +16,10 @@ langchain-core = "0.3.10"
 langchain-community = "0.3.2"
 langchain-chroma = "0.1.4"
 langchain-openai = "^0.2.2"
+pre-commit = "^4.2.0"
+pandas = "^2.3.1"
+umap-learn = "^0.5.9.post2"
+matplotlib = "^3.10.3"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -30,5 +34,3 @@ build-backend = "poetry.core.masonry.api"
 name = "pytorch-cuda"
 url = "https://download.pytorch.org/whl/cu124"
 priority = "supplemental"
-
-
