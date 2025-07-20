@@ -1,34 +1,40 @@
 """Class for processing the transcribed texts."""
 
+import json
 import os
-from bwriter.utils import read_file, write_file
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import PromptTemplate
+from pathlib import Path
+from typing import Dict, List, Union
+
+import numpy as np
+import openai
+import pandas as pd
+import umap
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from typing import Union, List, Dict
-import openai
-import numpy as np
-import umap
-import json
-from sklearn.cluster import DBSCAN
-from matplotlib import pyplot as plt
-import pandas as pd
-from pathlib import Path
+from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables.base import RunnableSequence
+from langchain_openai import ChatOpenAI
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from matplotlib import pyplot as plt
+from sklearn.cluster import DBSCAN
 from tqdm import tqdm
-from utils.logger import Logger
-logger = Logger.get_logger()
+
+from bwriter.utils import read_file, verify_path, write_file
+from utils.logger import logger
 
 
 class Processor:
     """Use a selected OpenAI llm to process texts."""
+
     def __init__(self, llm_name: str = "gpt-4o-mini"):
         """Initialize the processor with a given LLM name."""
-        os.environ["OPENAI_API_KEY"] = read_file(os.getenv("OPENAI_API_KEY_PATH", default="openai_key.txt"))
+        os.environ["OPENAI_API_KEY"] = read_file(
+            os.getenv("OPENAI_API_KEY_PATH", default="openai_key.txt"), clean=False
+        )
         self.llm = ChatOpenAI(model=llm_name)
-        self.prompts = json.load(open("bwriter/prompts.json", "r"))["processor_prompts"]
+        self.prompts = json.load(open("bwriter/prompts/processor_prompts.json", "r"))[
+            "processor_prompts"
+        ]
 
     def get_recap(self, inputs: Union[Dict, List]):
         """Get a summary of the text using the LLM."""
@@ -42,7 +48,7 @@ class Processor:
 
     @staticmethod
     def create_document_library(input_path: Path) -> List[Document]:
-        """Read the documents from a directory and create a library of documents."""
+        """Read the documents from a directory and create a library of docs."""
         # Create a library of documents
         file_library = []
 
@@ -50,51 +56,52 @@ class Processor:
         for i, file in enumerate(tqdm(input_path.iterdir())):
             if file.is_dir():
                 continue
-            with open(file, "r") as file_i:
-                file_content = file_i.read()
-
-            file_library.append(Document(page_content=file_content,
-                                         metadata={"source": str(file)},
-                                         id=i,
-                                         )
-                                )
+            # Read the content of the file
+            file_content = read_file(file)
+            # Create a Document object for each file
+            file_library.append(
+                Document(
+                    page_content=file_content,
+                    metadata={"source": str(file)},
+                    id=i,
+                )
+            )
         return file_library
 
     @staticmethod
-    def split_text_into_chunks(file_library: List[Document],
-                               max_length: int = 1000,
-                               chunk_overlap: int = 100
-                               ) -> List[Document]:
+    def split_text_into_chunks(
+        file_library: List[Document], max_length: int = 1000, chunk_overlap: int = 100
+    ) -> List[Document]:
         """Read the documents and divide them into smaller chunks.
-        
+
         Args:
             file_library (List[Document]): List of documents to be split.
             max_length (int): Maximum length of each chunk. Defaults to 1000.
             chunk_overlap (int): Overlap between chunks. Defaults to 100.
         """
         separators = [
-                "\n\n",
-                "\n",
-                ".",
-                "\uff0e",  # Fullwidth full stop
-                "\u3002",  # Ideographic full stop
-                "",
-            ]
+            "\n\n",
+            "\n",
+            ".",
+            "\uff0e",  # Fullwidth full stop
+            "\u3002",  # Ideographic full stop
+            "",
+        ]
 
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=max_length,
             chunk_overlap=chunk_overlap,
             add_start_index=True,
-            separators=separators
+            separators=separators,
         )
         document_splits = text_splitter.split_documents(file_library)
         return document_splits
 
     def correction_chain(self) -> RunnableSequence:
         """Correct a text transcript.
-        
+
         Returns:
-            RunnableSequence: A chain that takes a text and returns the corrected text.
+            RunnableSequence: A chain that takes a text and corrects it.
         """
         prompt = PromptTemplate.from_template(self.prompts["correction"])
         # Create a chain that takes a text and returns the corrected text
@@ -104,7 +111,7 @@ class Processor:
 
     def get_text_corrections(self, document_splits: List[Document]) -> Dict:
         """Correct each document split.
-        
+
         Args:
             document_splits (List[Document]): List of document splits to be corrected.
         """
@@ -126,32 +133,45 @@ class Processor:
                 counter += 1
 
             text = ds.page_content
-            splits_corretgits.append({"source": source,
-                                      "counter": counter,
-                                      "text": correction_chain.invoke(
-                                          {"text": text}
-                                          )
-                                      }
-                                     )
+            splits_corretgits.append(
+                {
+                    "source": source,
+                    "counter": counter,
+                    "text": correction_chain.invoke({"text": text}),
+                }
+            )
 
         return splits_corretgits
 
     @staticmethod
-    def save_text(document_splits: List[Document],
-                  output_path: Path
+    def save_text(
+        document_splits: List[Document], output_path: Path, merged_texts: bool = False
     ) -> None:
-        """Save the input text to the stated location."""
-        if not output_path.exists():
-            os.mkdir(output_path)
-            logger.info(f"Path created: {output_path}")
+        """Save the input text to the stated location.
 
-        logger.info(f"Saving corrected texts in {output_path}")
-        for split in document_splits:  # TODO: This will file on merged splits
-            source = Path(split["source"])
-            counter = split["counter"]
-            text = split["text"]
-            output_file = output_path / f"{source.stem}_{counter}.txt"
-            write_file(filepath=output_file, text=text)
+        Args:
+            document_splits (List[Document]): List of document splits to be saved.
+            output_path (Path): Path where the texts will be saved.
+            merged_texts (bool): Whether the input texts are the result of the merging step.
+            Defaults to False.
+        """
+        verify_path(output_path)
+
+        logger.info(f"Saving texts in {output_path}")
+        if merged_texts:
+            for idx, text in document_splits.items():
+                # Save text
+                filename = output_path / f"cluster_{idx}.txt"
+                write_file(filename, text)
+
+        # Otherwise, save each split as a separate file
+        else:
+            for split in document_splits:
+                source = Path(split["source"])
+                counter = split["counter"]
+                text = split["text"]
+                output_file = output_path / f"{source.stem}_{counter}.txt"
+                write_file(filepath=output_file, text=text)
 
     @staticmethod
     def read_text_files(input_path: Path) -> List[str]:
@@ -168,8 +188,7 @@ class Processor:
 
     @staticmethod
     def get_embedding(
-        text: List[str],
-        model: str = "text-embedding-3-small"
+        text: List[str], model: str = "text-embedding-3-small"
     ) -> List[np.array]:
         """
         Get the embedding for a given text using OpenAI's embedding API.
@@ -182,9 +201,7 @@ class Processor:
 
     @staticmethod
     def reduce_embeddings(
-        embeddings: List[np.array],
-        method: str,
-        kwargs: Dict = {}
+        embeddings: List[np.array], method: str, kwargs: Dict = {}
     ) -> List[int]:
         """
         Reduce the dimensionality of the embeddings using a given method.
@@ -199,23 +216,19 @@ class Processor:
         if method == "umap":
             # Use UMAP to cluster the embeddings
             if kwargs == {}:
-                kwargs = {
-                    "n_neighbors": 3,
-                    "min_dist": 0.3,
-                    "metric": "cosine"
-                }
+                kwargs = {"n_neighbors": 3, "min_dist": 0.3, "metric": "cosine"}
             logger.info("Reducing the dimensionality using UMAP.")
             reducer = umap.UMAP(**kwargs)
             embedding_umap = reducer.fit_transform(embeddings)
             return embedding_umap
         else:
-            raise ValueError("Invalid dimensionality reduction method. The only supported method is 'umap'.")
+            raise ValueError(
+                "Invalid dimensionality reduction method. The only supported method is 'umap'."
+            )
 
     @staticmethod
     def cluster_embeddings(
-        embeddings: List[np.array],
-        method: str = "dbscan",
-        cluster_args: Dict = {}
+        embeddings: List[np.array], method: str = "dbscan", cluster_args: Dict = {}
     ) -> List[int]:
         """
         Get the clusters for a list of vectors using a given method.
@@ -230,16 +243,14 @@ class Processor:
         if method == "dbscan":
             # Use DBSCAN to cluster the embeddings
             if cluster_args == {}:
-                cluster_args = {
-                    "eps": 0.9,
-                    "min_samples": 3,
-                    "metric": 'euclidean'
-                }
+                cluster_args = {"eps": 0.9, "min_samples": 3, "metric": "euclidean"}
             logger.info("Clustering the embeddings using DBSCAN.")
             clustering = DBSCAN(**cluster_args)
             return clustering.fit_predict(embeddings)
         else:
-            raise ValueError("Invalid clustering method. The only supported method is 'dbscan'.")
+            raise ValueError(
+                "Invalid clustering method. The only supported method is 'dbscan'."
+            )
 
     @staticmethod
     def get_clusters_from_text(
@@ -249,8 +260,7 @@ class Processor:
         cluster_method: str = "dbscan",
         dim_red_args: Dict = {},
         cluster_args: Dict = {},
-        save_fig_path: str = None
-
+        save_fig_path: str = None,
     ) -> List[int]:
         """
         Get the clusters for a given list of texts using a dimensionality
@@ -258,12 +268,16 @@ class Processor:
 
         Args:
             texts (List[str]): List of texts to cluster.
-            embedding_model (str): Model to use for embeddings. Defaults to "text-embedding-3-small".
-            dim_red_method (str): Method to use for dimensionality reduction. Defaults to "umap".
-            cluster_method (str): Clustering method to use. Defaults to "dbscan".
-            dim_red_args (Dict): Additional arguments for the dimensionality reduction method.
+            embedding_model (str): Model to use for embeddings.
+            Defaults to "text-embedding-3-small".
+            dim_red_method (str): Method to use for dimensionality reduction.
+            Defaults to "umap".
+            cluster_method (str): Clustering method to use.
+            Defaults to "dbscan".
+            dim_red_args (Dict): Additional arguments for the dime reduction method.
             cluster_args (Dict): Additional arguments for the clustering method.
-            save_fig_path (str, optional): Path to save the clustering figure. Defaults to None.
+            save_fig_path (str, optional): Path to save the clustering figure.
+            Defaults to None.
 
         Return: List of cluster labels for each word in the text.
         """
@@ -271,16 +285,14 @@ class Processor:
         embeddings = Processor.get_embedding(texts, embedding_model)
 
         # Reduce the dimensionality of the embeddings
-        reduced_embeddings = Processor.reduce_embeddings(embeddings,
-                                                         dim_red_method,
-                                                         dim_red_args
-                                                         )
+        reduced_embeddings = Processor.reduce_embeddings(
+            embeddings, dim_red_method, dim_red_args
+        )
 
         # Cluster the embeddings
-        clusters = Processor.cluster_embeddings(reduced_embeddings,
-                                                cluster_method,
-                                                cluster_args
-                                                )
+        clusters = Processor.cluster_embeddings(
+            reduced_embeddings, cluster_method, cluster_args
+        )
 
         # Save the figure if a path is given
         if save_fig_path:
@@ -289,9 +301,9 @@ class Processor:
                 reduced_embeddings[:, 0],
                 reduced_embeddings[:, 1],
                 c=clusters,
-                )
-            plt.gca().set_aspect('equal', 'datalim')
-            plt.title('Clusters', fontsize=24)
+            )
+            plt.gca().set_aspect("equal", "datalim")
+            plt.title("Clusters", fontsize=24)
             plt.colorbar()
             plt.savefig(save_fig_path)
             logger.info(f"Figure saved in {save_fig_path}")
@@ -305,11 +317,7 @@ class Processor:
             text_to_merge (List[str]): List of texts to merge.
         """
         prompt_merge = PromptTemplate.from_template(self.prompts["merge"])
-        merge_chain = (
-            prompt_merge
-            | self.llm
-            | StrOutputParser()
-        )
+        merge_chain = prompt_merge | self.llm | StrOutputParser()
 
         return merge_chain.invoke({"text": "/n/n".join(text_to_merge)})
 
@@ -334,22 +342,33 @@ class Processor:
     def llm_order_chain(self, text_to_order: List[str]) -> str:
         """Create chain to order the texts"""
         prompt_merge = PromptTemplate.from_template(self.prompts["order"])
-        order_chain = (
-            prompt_merge
-            | self.llm
-            | StrOutputParser()
-        )
+        order_chain = prompt_merge | self.llm | StrOutputParser()
 
         return order_chain.invoke({"text": text_to_order})
 
     def sort_texts(self, input_texts: Dict[int, str]) -> str:
         """Order the texts according to the clusters they belong to."""
         # Convert to single string
-        numbered_clusters = [f"{cluster}. {text}" for cluster, text in input_texts.items()]
+        numbered_clusters = [
+            f"{cluster}. {text}" for cluster, text in input_texts.items()
+        ]
         # Order the texts
         ordered_sequence = self.llm_order_chain("\n\n".join(numbered_clusters))
         ordered_list = eval(ordered_sequence)
         # Join text in a single string
-        ordered_text = "\n\n".join([input_texts[cluster] for cluster in ordered_list])
+        try:
+            ordered_text = "\n\n".join(
+                [input_texts[cluster] for cluster in ordered_list]
+            )
+        except RuntimeError as e:
+            logger.error(f"Error ordering texts: {e}")
+            raise RuntimeError(
+                f"""The ordering of the texts failed.
+                This may be caused by the ordering returned by the llm.
+                llm clusters: {ordered_list}
+                input clusters: {list(input_texts.keys())}
+                Please check the input texts and the llm ordering.
+                """
+            )
 
         return ordered_text
