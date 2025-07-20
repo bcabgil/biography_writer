@@ -54,34 +54,23 @@ class ProcessingPipeline:
         """Split and correct inptut files
 
         Args:
-            save_files (bool, optional): Whether to save the corrected files. 
+            save_files (bool, optional): Whether to save the corrected files.
             Defaults to True.
             **kwargs: Additional keyword arguments for text processing.
         """
         # Create document library
-        documents = self.corrector.create_document_library(
-            self.input_directory
-        )
+        documents = self.corrector.create_document_library(self.input_directory)
         # Split documents
-        split_documents = self.corrector.split_text_into_chunks(
-            documents,
-            **kwargs
-        )
+        split_documents = self.corrector.split_text_into_chunks(documents, **kwargs)
         # Correct documents
         corrected_splits = self.corrector.get_text_corrections(split_documents)
         if save_files:
             # Save corrected splits
-            self.corrector.save_text(
-                corrected_splits,
-                self.corrected_directory
-            )
+            self.corrector.save_text(corrected_splits, self.corrected_directory)
         return corrected_splits
 
     def merge_similar_splits(
-        self,
-        text_splits: List[str],
-        save_files: bool = True,
-        **kwargs
+        self, text_splits: List[str], save_files: bool = True, **kwargs
     ) -> Dict[int, str]:
         """Merge text chuncks with similar content
 
@@ -92,15 +81,14 @@ class ProcessingPipeline:
             **kwargs: Additional keyword arguments for merging.
         """
         # Get text clusters
-        text_clusters = self.merger.get_clusters_from_text(
-            text_splits,
-            **kwargs
-        )
+        text_clusters = self.merger.get_clusters_from_text(text_splits, **kwargs)
         # Merge clusters
         merged_clusters = self.merger.merge_texts(text_splits, text_clusters)
         # Save merged clusters
         if save_files:
-            self.merger.save_text(merged_clusters, self.merged_directory)
+            self.merger.save_text(
+                merged_clusters, self.merged_directory, merged_texts=True
+            )
         return merged_clusters
 
     def order_clusters(self, text_clusters: Dict[int, str]) -> List[str]:
@@ -115,12 +103,7 @@ class ProcessingPipeline:
         write_file(text_filepath, ordered_text)
         return ordered_text
 
-    def run(
-            self,
-            process_kwargs,
-            merge_kwargs,
-            save_files: bool = True
-    ) -> str:
+    def run(self, process_kwargs, merge_kwargs, save_files: bool = True) -> str:
         """Run the pipeline
 
         Args:
@@ -129,11 +112,14 @@ class ProcessingPipeline:
             save_files (bool, optional): Whether to save the processed files.
             Defaults to True.
         """
+        logger.info("Correcting files.")
         corrected_splits = self.process_files(save_files, **process_kwargs)
         texts_to_merge = [text["text"] for text in corrected_splits]
+        logger.info("Merging similar text splits.")
         merged_clusters = self.merge_similar_splits(
             texts_to_merge, save_files, **merge_kwargs
         )
+        logger.info("Ordering clusters based on their content.")
         ordered_text = self.order_clusters(merged_clusters)
         logger.info("Pipeline run completed.")
         return ordered_text
