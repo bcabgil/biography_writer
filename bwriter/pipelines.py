@@ -2,7 +2,7 @@
 from pathlib import Path
 from typing import Dict, List, Union
 
-from bwriter.processing import Processor
+from bwriter.processing import Corrector, Sorter, Merger
 from bwriter.utils import write_file
 from utils.logger import logger
 
@@ -44,9 +44,9 @@ class ProcessingPipeline:
         self.input_directory = input_directory
         self.corrected_directory = corrected_directory
         self.merged_directory = merged_directory
-        self.corrector = Processor(llm_name=llm_correction)
-        self.merger = Processor(llm_name=llm_merge)
-        self.sorter = Processor(llm_name=llm_sorter)
+        self.corrector = Corrector(llm_name=llm_correction)
+        self.merger = Merger(llm_name=llm_merge)
+        self.sorter = Sorter(llm_name=llm_sorter)
 
     def process_files(
         self, save_files: bool = True, **kwargs
