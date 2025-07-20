@@ -29,7 +29,7 @@ class Processor:
     def __init__(self, llm_name: str = "gpt-4o-mini"):
         """Initialize the processor with a given LLM name."""
         os.environ["OPENAI_API_KEY"] = read_file(
-            os.getenv("OPENAI_API_KEY_PATH", default=r"C:\Users\bcabg\Documents\Projects\Biograf\whiteb_editions\openai_key.txt"), clean=False
+            os.getenv("OPENAI_API_KEY_PATH", default=r"\openai_key.txt"), clean=False
         )
         self.llm = ChatOpenAI(model=llm_name)
 
