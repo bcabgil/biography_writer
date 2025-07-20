@@ -79,6 +79,7 @@ def create_biography():
     )
     # Run the processing pipeline
     logger.info("Running processing pipeline...")
+    # TODO: Move parameters to a config file
     merge_kwargs = {"save_fig_path": merged_path/"clusters.png"}
     process_kwargs = {
         "max_length": 512,
